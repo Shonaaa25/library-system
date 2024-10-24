@@ -1,0 +1,403 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+
+// Abstract User class representing a general user in the library
+abstract class User
+{
+    public string Name { get; set; }
+    public string Role { get; set; }
+
+    // Constructor to initialize user with name and role
+    public User(string name, string role)
+    {
+        Name = name;
+        Role = role;
+    }
+
+    // Abstract method to display the user's role
+    public abstract void DisplayRole();
+}
+
+// Member class inherits from User
+class Member : User
+{
+    // List to hold books borrowed by the member
+    public List<Book> BorrowedBooks { get; set; }
+
+    // Constructor to initialize a member
+    public Member(string name) : base(name, "Member")
+    {
+        BorrowedBooks = new List<Book>();
+    }
+
+    // Display the member's role
+    public override void DisplayRole()
+    {
+        Console.WriteLine($"User {Name} is a {Role}");
+    }
+
+    // Method for a member to borrow a book
+    public void BorrowBook(Book book)
+    {
+        BorrowedBooks.Add(book);
+        Console.WriteLine($"{Name} borrowed the book: {book.Title}. You have 30 days to return it.");
+    }
+
+    // Method for a member to return a book
+    public void ReturnBook(Book book)
+    {
+        BorrowedBooks.Remove(book);
+        Console.WriteLine($"Thank you for returning the book: {book.Title}");
+    }
+
+    // Method to display all borrowed books
+    public void ViewBorrowedBooks()
+    {
+        if (BorrowedBooks.Count == 0)
+        {
+            Console.WriteLine("No borrowed books.");
+        }
+        else
+        {
+            Console.WriteLine("Borrowed Books:");
+            foreach (var book in BorrowedBooks)
+            {
+                Console.WriteLine($"{book.Title} by {book.Author}");
+            }
+        }
+    }
+}
+
+// Library class to manage books and members
+class Library
+{
+    public List<Book> Books { get; set; } // List of books in the library
+    public List<Member> Members { get; set; } // List of members in the library
+
+    // Delegate for overdue notifications
+    public delegate void OverdueNotification(Member member);
+    public event OverdueNotification OnOverdueNotification;
+
+    // Constructor to initialize the library
+    public Library()
+    {
+        Books = new List<Book>();
+        Members = new List<Member>();
+    }
+
+    // Method to save the current list of books to a file
+    public void SaveBooksToFile()
+    {
+        using (StreamWriter writer = new StreamWriter("books.txt"))
+        {
+            foreach (var book in Books)
+            {
+                writer.WriteLine($"{book.Title},{book.Author},{book.ISBN},{book.PublicationYear}");
+            }
+        }
+    }
+
+    // Method to load books from a file into the library
+    public void LoadBooksFromFile()
+    {
+        if (File.Exists("books.txt"))
+        {
+            using (StreamReader reader = new StreamReader("books.txt"))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var parts = line.Split(',');
+                    Books.Add(new Book(parts[0], parts[1], parts[2], int.Parse(parts[3])));
+                }
+            }
+        }
+    }
+
+    // Method to generate a report of total and borrowed books
+    public string GenerateReport()
+    {
+        int totalBooks = Books.Count;
+        int borrowedBooks = Members.Sum(m => m.BorrowedBooks.Count);
+        string report = $"Total books: {totalBooks}, Borrowed books: {borrowedBooks}";
+        return report;
+    }
+
+    // Method to notify all members about overdue books
+    public void NotifyOverdueMembers()
+    {
+        foreach (var member in Members)
+        {
+            OnOverdueNotification?.Invoke(member);
+        }
+    }
+}
+
+// Librarian class inherits from User
+class Librarian : User
+{
+    // Constructor to initialize a librarian
+    public Librarian(string name) : base(name, "Librarian") { }
+
+    // Display the librarian's role
+    public override void DisplayRole()
+    {
+        Console.WriteLine($"User {Name} is a {Role}");
+    }
+
+    // Method to add a new book to the library and save it
+    public void AddBook(Library library, Book book)
+    {
+        library.Books.Add(book);
+        library.SaveBooksToFile();
+        Console.WriteLine($"Librarian {Name} added the book: {book.Title}");
+    }
+
+    // Method to remove a book from the library and save changes
+    public void RemoveBook(Library library, Book book)
+    {
+        library.Books.Remove(book);
+        library.SaveBooksToFile();
+        Console.WriteLine($"Librarian {Name} removed the book: {book.Title}");
+    }
+}
+
+// Admin class inherits from User
+class Admin : User
+{
+    // Constructor to initialize an admin
+    public Admin(string name) : base(name, "Admin") { }
+
+    // Display the admin's role
+    public override void DisplayRole()
+    {
+        Console.WriteLine($"User {Name} is an {Role}");
+    }
+
+    // Method for admin to generate comprehensive reports
+    public void GenerateReport(Library library)
+    {
+        Console.WriteLine("Generating report...");
+        var report = library.GenerateReport();
+        Console.WriteLine(report);
+    }
+
+    // Method for admin to notify members about overdue books
+    public void NotifyOverdue(Library library)
+    {
+        library.NotifyOverdueMembers();
+    }
+}
+
+// Book class to represent a book
+class Book
+{
+    public string Title { get; set; } // Title of the book
+    public string Author { get; set; } // Author of the book
+    public string ISBN { get; set; } // ISBN number of the book
+    public int PublicationYear { get; set; } // Year of publication
+
+    // Constructor to initialize a book
+    public Book(string title, string author, string isbn, int year)
+    {
+        Title = title;
+        Author = author;
+        ISBN = isbn;
+        PublicationYear = year;
+    }
+}
+
+// Class for managing library operations with thread safety
+class LibraryManager
+{
+    private Library _library = new Library(); // Instance of the library
+    private readonly object _lock = new object(); // Lock object for thread safety
+
+    // Method for a member to borrow a book in a thread-safe manner
+    public void BorrowBook(Member member, Book book)
+    {
+        lock (_lock)
+        {
+            member.BorrowBook(book);
+        }
+    }
+
+    // Method for a member to return a book in a thread-safe manner
+    public void ReturnBook(Member member, Book book)
+    {
+        lock (_lock)
+        {
+            member.ReturnBook(book);
+        }
+    }
+
+    // Method to simulate concurrent borrowing using threading
+    public void SimulateConcurrentBorrowing(Member member1, Book book1, Member member2, Book book2)
+    {
+        Thread thread1 = new Thread(() => BorrowBook(member1, book1));
+        Thread thread2 = new Thread(() => BorrowBook(member2, book2));
+
+        thread1.Start();
+        thread2.Start();
+
+        thread1.Join(); // Wait for thread1 to complete
+        thread2.Join(); // Wait for thread2 to complete
+    }
+}
+
+// Main program class
+class Program
+{
+    static void Main(string[] args)
+    {
+        Library library = new Library();
+        LibraryManager libraryManager = new LibraryManager();
+
+        // Load books from file at the start
+        library.LoadBooksFromFile();
+
+        bool keepRunning = true;
+
+        while (keepRunning)
+        {
+            // Prompt user to select a role
+            Console.WriteLine("Select user role: 1) Member 2) Librarian 3) Admin 4) Exit");
+            int role = int.Parse(Console.ReadLine());
+
+            switch (role)
+            {
+                case 1: // Member role
+                    Console.Write("Enter your name: ");
+                    string memberName = Console.ReadLine();
+                    Member member = library.Members.FirstOrDefault(m => m.Name == memberName);
+
+                    // If member doesn't exist, create a new member
+                    if (member == null)
+                    {
+                        member = new Member(memberName);
+                        library.Members.Add(member);
+                    }
+
+                    // Prompt member for actions
+                    Console.WriteLine("1) Borrow Book 2) Return Book 3) View Borrowed Books 4) Return to Main Menu");
+                    int memberChoice = int.Parse(Console.ReadLine());
+
+                    if (memberChoice == 1) // Borrow Book
+                    {
+                        Console.WriteLine("Select a book to borrow:");
+                        for (int i = 0; i < library.Books.Count; i++)
+                        {
+                            Console.WriteLine($"{i + 1}) {library.Books[i].Title}");
+                        }
+                        int bookChoice = int.Parse(Console.ReadLine());
+                        libraryManager.BorrowBook(member, library.Books[bookChoice - 1]);
+                    }
+                    else if (memberChoice == 2) // Return Book
+                    {
+                        if (member.BorrowedBooks.Count == 0)
+                        {
+                            Console.WriteLine("You have no books to return.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Select a book to return:");
+                            for (int i = 0; i < member.BorrowedBooks.Count; i++)
+                            {
+                                Console.WriteLine($"{i + 1}) {member.BorrowedBooks[i].Title}");
+                            }
+                            int bookChoice = int.Parse(Console.ReadLine());
+                            libraryManager.ReturnBook(member, member.BorrowedBooks[bookChoice - 1]);
+                        }
+                    }
+                    else if (memberChoice == 3) // View Borrowed Books
+                    {
+                        member.ViewBorrowedBooks(); // Display the books the member has borrowed
+                    }
+                    break; // End of Member case
+
+                case 2: // Librarian role
+                    Console.Write("Enter your name: ");
+                    string librarianName = Console.ReadLine();
+                    Librarian librarian = new Librarian(librarianName); // Create a new librarian instance
+
+                    // Prompt librarian for actions
+                    Console.WriteLine("1) Add Book 2) Remove Book 3) Return to Main Menu");
+                    int librarianChoice = int.Parse(Console.ReadLine());
+
+                    if (librarianChoice == 1) // Add Book
+                    {
+                        // Gather book details from the librarian
+                        Console.Write("Enter book title: ");
+                        string title = Console.ReadLine();
+                        Console.Write("Enter author: ");
+                        string author = Console.ReadLine();
+                        Console.Write("Enter ISBN: ");
+                        string isbn = Console.ReadLine();
+                        Console.Write("Enter publication year: ");
+                        int year = int.Parse(Console.ReadLine());
+
+                        // Add the new book to the library
+                        librarian.AddBook(library, new Book(title, author, isbn, year));
+                    }
+                    else if (librarianChoice == 2) // Remove Book
+                    {
+                        Console.WriteLine("Select a book to remove:");
+                        for (int i = 0; i < library.Books.Count; i++)
+                        {
+                            Console.WriteLine($"{i + 1}) {library.Books[i].Title}"); // Display list of books
+                        }
+                        int bookChoice = int.Parse(Console.ReadLine());
+                        librarian.RemoveBook(library, library.Books[bookChoice - 1]); // Remove the selected book
+                    }
+                    break; // End of Librarian case
+
+                case 3: // Admin role
+                    Console.Write("Enter your name: ");
+                    string adminName = Console.ReadLine();
+                    Admin admin = new Admin(adminName); // Create a new admin instance
+
+                    // Prompt admin for actions
+                    Console.WriteLine("1) Display Reports 2) Notify Overdue Books 3) Return to Main Menu");
+                    int adminChoice = int.Parse(Console.ReadLine());
+
+                    if (adminChoice == 1) // Generate Report
+                    {
+                        admin.GenerateReport(library); // Generate and display the library report
+                    }
+                    else if (adminChoice == 2) // Notify Overdue Books
+                    {
+                        // Subscribe to the overdue notification event
+                        library.OnOverdueNotification += (memberToNotify) =>
+                        {
+                            Console.WriteLine($"Notification sent to {memberToNotify.Name} about overdue books."); // Notify member
+                        };
+                        admin.NotifyOverdue(library); // Notify overdue members
+                    }
+                    break; // End of Admin case
+
+                case 4: // Exit the application
+                    Console.WriteLine("Exiting... Saving data."); // Inform user about exiting
+                    library.SaveBooksToFile(); // Save current book data to file
+                    keepRunning = false; // Set loop condition to false to exit
+                    break;
+
+                default: // Invalid option handling
+                    Console.WriteLine("Invalid option. Please select again."); // Inform user about invalid choice
+                    break;
+            }
+
+            if (keepRunning) // Check if the application should continue running
+            {
+                Console.WriteLine("Press any key to return to the main menu..."); // Prompt to return to main menu
+                Console.ReadKey(); // Wait for user input
+                Console.Clear(); // Clear the console for the next iteration
+            }
+        }
+    }
+}
+
+
+
